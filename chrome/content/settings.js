@@ -1,5 +1,15 @@
-var { gQuicktext } = ChromeUtils.import("chrome://quicktext/content/modules/wzQuicktext.jsm");
-var { quicktextUtils } = ChromeUtils.import("chrome://quicktext/content/modules/utils.jsm");
+var { ExtensionParent } = ChromeUtils.importESModule(
+  "resource://gre/modules/ExtensionParent.sys.mjs"
+);
+var extension = ExtensionParent.GlobalManager.getExtension(
+  "{8845E3B3-E8FB-40E2-95E9-EC40294818C4}"
+);
+var { gQuicktext } = ChromeUtils.importESModule(
+  `chrome://quicktext/content/modules/wzQuicktext.sys.mjs?v=${extension.manifest.version}`
+);
+var { quicktextUtils } = ChromeUtils.importESModule(
+  `chrome://quicktext/content/modules/utils.sys.mjs?v=${extension.manifest.version}`
+);
 
 var quicktext = {
   mChangesMade:         false,
@@ -15,6 +25,8 @@ var quicktext = {
 ,
   init: async function()
   {
+    await window.i18n.updateDocument({ extension: gQuicktext.mExtension });
+
     if (!this.mLoaded)
     {
       this.mLoaded = true;
@@ -55,7 +67,8 @@ var quicktext = {
       document.getElementById('text-keyword').addEventListener("keypress", function(e) { quicktext.noSpaceForKeyword(e); }, false);
 
       this.disableSave();
-      document.documentElement.getButton("extra1").addEventListener("command", function(e) { quicktext.save(); }, false);
+      document.getElementById("savebutton").addEventListener("command", function(e) { quicktext.save(); }, false);
+      document.getElementById("closebutton").addEventListener("command", function(e) { quicktext.close(true); }, false);
     }
   }
 ,
@@ -460,7 +473,10 @@ var quicktext = {
         let field = fields[i];
         let fieldtype = field.split("-")[0];
         if (document.getElementById(field)) {
-            document.getElementById(field).setAttribute("label", gQuicktext.mStringBundle.formatStringFromName(fieldtype, [quicktextUtils.dateTimeFormat(field, timeStamp)], 1));
+            document.getElementById(field).setAttribute(
+              "label",
+              gQuicktext.mStringBundle.formatStringFromName(fieldtype, [quicktextUtils.dateTimeFormat(field, timeStamp)])
+            );
         }
     }
 
@@ -583,14 +599,14 @@ var quicktext = {
 
   disableSave: function()
   {
-    document.documentElement.getButton("extra1").setAttribute("disabled", true);
+    document.getElementById("savebutton").setAttribute("disabled", true);
     document.getElementById("toolbar-save").setAttribute("disabled", true);
   }
 ,
 
   enableSave: function()
   {
-    document.documentElement.getButton("extra1").removeAttribute("disabled");
+    document.getElementById("savebutton").removeAttribute("disabled");
     document.getElementById("toolbar-save").removeAttribute("disabled");
   }
 ,
@@ -944,7 +960,7 @@ var quicktext = {
       if (textIndex > -1)
         title = gQuicktext.getText(groupIndex, textIndex, true).name;
 
-      if (confirm (gQuicktext.mStringBundle.formatStringFromName("remove", [title], 1)))
+      if (confirm (gQuicktext.mStringBundle.formatStringFromName("remove", [title])))
       {
         this.mPickedIndex = null;
 
@@ -1003,10 +1019,7 @@ var quicktext = {
 ,
   getCommunityScripts: function()
   {
-    let ioservice = Components.classes["@mozilla.org/network/io-service;1"].getService(Components.interfaces.nsIIOService);
-    let uriToOpen = ioservice.newURI("https://github.com/jobisoft/quicktext/wiki/Community-scripts", null, null);
-    let extps = Components.classes["@mozilla.org/uriloader/external-protocol-service;1"].getService(Components.interfaces.nsIExternalProtocolService);
-    extps.loadURI(uriToOpen, null);   
+    notifyTools.notifyBackground({ command: "openWebPage", url: "https://github.com/jobisoft/quicktext/wiki/Community-scripts" });
   }
 ,
   addScript: function()
@@ -1038,7 +1051,7 @@ var quicktext = {
     if (scriptIndex != null)
     {
       var title = gQuicktext.getScript(scriptIndex, true).name;
-      if (confirm (gQuicktext.mStringBundle.formatStringFromName("remove", [title], 1)))
+      if (confirm (gQuicktext.mStringBundle.formatStringFromName("remove", [title])))
       {
         gQuicktext.removeScript(scriptIndex, true);
         this.changesMade();
@@ -1428,3 +1441,6 @@ var quicktext = {
     }
   }
 }
+
+window.addEventListener("DOMContentLoaded", () => quicktext.init());
+window.addEventListener("unload", () => quicktext.unload());
