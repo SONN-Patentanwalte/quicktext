@@ -5,17 +5,20 @@ on:
     tags:
       - '*'
 
+permissions:
+  contents: read
+
 jobs:
   build-linux:
     name: Build Linux
     runs-on: ubuntu-latest
     steps:
     - name: Checkout Repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v7
     - name: Build .xpi file
       run: |
         zip -r Quicktext@SONN.xpi * -x "*.git*"
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v7
       with:
         name: xpi
         path: Quicktext@SONN.xpi
@@ -26,8 +29,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v8
+        with:
+          name: xpi
+          path: xpi
       - uses: ncipollo/release-action@v1
         with:
           draft: false
