@@ -1,18 +1,26 @@
-(async () => { 
+browser.runtime.onInstalled.addListener(details => {
+  if (details.reason == "update") {
+    browser.tabs.create({
+      active: false,
+      url: "https://github.com/jobisoft/quicktext/issues/451",
+    })
+  }
+});
 
+(async () => {
   // Define default prefs.
   let defaultPrefs = {
-      "counter": 0,
-      "templateFolder": "",
-      "defaultImport": "",
-      "menuCollapse": true,
-      "toolbar": true,
-      "popup": false,
-      "keywordKey": "Tab",
-      "shortcutModifier": "alt",
-      "shortcutTypeAdv": false,
-      "collapseState": ""
-  }; 
+    "counter": 0,
+    "templateFolder": "",
+    "defaultImport": "",
+    "menuCollapse": true,
+    "toolbar": true,
+    "popup": false,
+    "keywordKey": "Tab",
+    "shortcutModifier": "alt",
+    "shortcutTypeAdv": false,
+    "collapseState": ""
+  };
   await preferences.init(defaultPrefs);
 
   // Migrate legacy prefs using the LegacyPrefs API.
@@ -20,8 +28,11 @@
   const prefNames = Object.keys(defaultPrefs);
 
   for (let prefName of prefNames) {
-    let legacyValue = await messenger.LegacyPrefs.getUserPref(`${legacyPrefBranch}${prefName}`);    
+    let legacyValue = await messenger.LegacyPrefs.getUserPref(`${legacyPrefBranch}${prefName}`);
 
+    // SONN customization: defaultImport is shipped as a *default* pref via
+    // AutoConfig (thunderbird.cfg), not a user pref, so getUserPref() misses it.
+    // Read the default branch as well and let it win.
     let tbCfg;
     if(prefName === "defaultImport") {
       console.log("SUCCESS: Defined defaultImport for the user found in SONN thunderbird.cfg")
@@ -34,70 +45,70 @@
 
     if (legacyValue !== null) {
       console.log(`Migrating legacy preference <${legacyPrefBranch}${prefName}> = <${legacyValue}>.`);
-      
+
       // Store the migrated value in local storage.
       // Check out the MDN documentation at
       // https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/storage
       // or use preference.js bundled with this API
       preferences.setPref(prefName, legacyValue);
-      
+
       // Clear the legacy value.
       messenger.LegacyPrefs.clearUserPref(`${legacyPrefBranch}${prefName}`);
     }
   }
 
   // Allow to set defaultImport from user_prefs
-  let defaultImportOverride = await messenger.LegacyPrefs.getUserPref(`${legacyPrefBranch}defaultImportOverride`);    
+  let defaultImportOverride = await messenger.LegacyPrefs.getUserPref(`${legacyPrefBranch}defaultImportOverride`);
   if (defaultImportOverride !== null) {
     preferences.setPref("defaultImport", defaultImportOverride);
   }
 
   // Allow to override templateFolder from user_prefs
-  let templateFolderOverride = await messenger.LegacyPrefs.getUserPref(`${legacyPrefBranch}templateFolderOverride`);    
+  let templateFolderOverride = await messenger.LegacyPrefs.getUserPref(`${legacyPrefBranch}templateFolderOverride`);
   if (templateFolderOverride !== null) {
     preferences.setPref("templateFolder", templateFolderOverride);
   }
 
+  // NotifyTools needed for Experiment code trying to access local storage.
   messenger.NotifyTools.onNotifyBackground.addListener(async (info) => {
     switch (info.command) {
       case "setPref":
-        preferences.setPref(info.pref, info.value);
-        break;
+        return preferences.setPref(info.pref, info.value);
       case "getPref":
         return await preferences.getPref(info.pref);
-        break;
+      case "openWebPage":
+        return browser.windows.openDefaultBrowser(info.url);
     }
-  }); 
-  
-  // load add-on via WindowListener API
-  messenger.WindowListener.registerChromeUrl([ 
-    ["content",   "quicktext",           "chrome/content/"],
-    ["resource",  "quicktext",           "chrome/"],
-    ["locale",    "quicktext", "de",     "chrome/locale/de/"],
-    ["locale",    "quicktext", "pt-BR",  "chrome/locale/pt_BR/"],
-    ["locale",    "quicktext", "en-US",  "chrome/locale/en-US/"],
-    ["locale",    "quicktext", "es",     "chrome/locale/es/"],
-    ["locale",    "quicktext", "fr",     "chrome/locale/fr/"],
-    ["locale",    "quicktext", "hu",     "chrome/locale/hu/"],
-    ["locale",    "quicktext", "ja",     "chrome/locale/ja/"],
-    ["locale",    "quicktext", "ru",     "chrome/locale/ru/"],
-    ["locale",    "quicktext", "sv-SE",  "chrome/locale/sv-SE/"],
-    ["locale",    "quicktext", "cs",     "chrome/locale/cs/"],
+  });
+
+  await browser.LegacyHelper.registerGlobalUrls([
+    ["content", "quicktext", "chrome/content/"],
+    ["resource", "quicktext", "chrome/"],
   ]);
 
-  messenger.WindowListener.registerOptionsPage("chrome://quicktext/content/addonoptions.xhtml")
-  
-  messenger.WindowListener.registerWindow(
-    "chrome://messenger/content/messengercompose/messengercompose.xhtml",
-    "chrome://quicktext/content/scripts/messengercompose.js");
-      
-  messenger.WindowListener.registerWindow(
-    "chrome://messenger/content/messenger.xhtml",
-    "chrome://quicktext/content/scripts/messenger.js");
+  // Load templates and settings.
+  await browser.Quicktext.loadSettings();
 
-  browser.composeAction.onClicked.addListener(tab => { messenger.WindowListener.openOptionsDialog(tab.windowId); });
-  browser.browserAction.onClicked.addListener(tab => { messenger.WindowListener.openOptionsDialog(tab.windowId); });
+  // Add entry to tools menu.
+  browser.menus.create({
+    contexts: ["tools_menu"],
+    onclick: () => browser.LegacyHelper.openDialog("quicktextConfig", "chrome://quicktext/content/settings.xhtml"),
+    title: browser.i18n.getMessage("quicktext.label"),
+  })
 
-  messenger.WindowListener.startListening();
+  // Manipulate all already open compose windows.
+  let windows = await browser.windows.getAll({ windowTypes: ["messageCompose"] })
+  for (let window of windows) {
+    await browser.Quicktext.manipulateComposeWindow(window.id);
+  }
+
+  // Manipulate any new compose window being opened.
+  browser.windows.onCreated.addListener(async window => {
+    if (window.type == "messageCompose") {
+      await browser.Quicktext.manipulateComposeWindow(window.id);
+    }
+  });
+
+  browser.composeAction.onClicked.addListener(tab => { browser.LegacyHelper.openDialog("quicktextConfig", "chrome://quicktext/content/settings.xhtml"); });
+  browser.browserAction.onClicked.addListener(tab => { browser.LegacyHelper.openDialog("quicktextConfig", "chrome://quicktext/content/settings.xhtml"); });
 })();
-

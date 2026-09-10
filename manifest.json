@@ -7,7 +7,7 @@
     }
   },
   "name": "Quicktext",
-  "version": "5.16",
+  "version": "5.20",
   "author": "John Bieling, SONN",
   "homepage_url": "https://github.com/jobisoft/quicktext",
   "default_locale": "en-US",
@@ -35,20 +35,20 @@
       "32": "chrome/skin/icon.png"
     }
   }, 
-  "permissions" : ["storage"],
+  "permissions" : ["storage", "menus"],
   "background": {
     "scripts": [
-      "/chrome/content/scripts/preferences.js", 
+      "/chrome/content/preferences.js", 
       "background.js"
     ]
   },
   "experiment_apis": {
-    "WindowListener": {
-      "schema": "api/WindowListener/schema.json",
+    "LegacyHelper": {
+      "schema": "api/LegacyHelper/schema.json",
       "parent": {
         "scopes": ["addon_parent"],
-        "paths": [["WindowListener"]],
-        "script": "api/WindowListener/implementation.js"
+        "paths": [["LegacyHelper"]],
+        "script": "api/LegacyHelper/implementation.js"
       }
     },
     "NotifyTools": {
@@ -67,6 +67,14 @@
         "paths": [["LegacyPrefs"]],
         "script": "api/LegacyPrefs/implementation.js"
       }
-    }    
+    },
+    "Quicktext": {
+      "schema": "api/Quicktext/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "paths": [["Quicktext"]],
+        "script": "api/Quicktext/implementation.js"
+      }
+    }
   }
 }
